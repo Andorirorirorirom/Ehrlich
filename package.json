@@ -1,0 +1,27 @@
+{
+  "name": "ehrlich",
+  "version": "1.0.0",
+  "description": "A simple backend program for storing and retreiving images",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "nodejs",
+    "backend",
+    "RESTful",
+    "API"
+  ],
+  "author": "Andrei Roehm Zacarias",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.26.1",
+    "body-parser": "^1.19.2",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "express": "^4.17.3",
+    "express-basic-auth": "^1.2.1",
+    "morgan": "^1.10.0",
+    "promise": "^8.1.0"
+  }
+}
