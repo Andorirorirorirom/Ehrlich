@@ -20,6 +20,21 @@ const { resolve } = require('promise');
 let getPexels = pexels.createClient(CLOUD_CONFIG.PEXEL_CONFIG.API_KEY);
 cloudinary.config(CLOUD_CONFIG.CLOUDINARY_CONFIG);
 
+const addSingleFile = async (url) => {
+    await cloudinary.uploader.upload(url, { folder: Ehrlich }, (err, result) => {
+        if (err) throw err;
+        return result;
+    })
+}
+
+const destroyFile = async (public_id) => {
+
+    await cloudinary.uploader.destroy(public_id, (err, result) => {
+        if (err) throw err;
+        return result;
+    })
+}
+
 
 const verifyUser = (req, res, next) => {
 
@@ -99,9 +114,11 @@ const fileTransfer = async (req, res, next) => {
             if (err) {
                 res.status(500).end("Upload Failed")
             } else {
+                console.log(result);
                 let obj = {
                     hits: 1,
-                    url: result.secure_url
+                    url: result.secure_url,
+                    public_id: result.public_id
                 }
                 cloud_url.push(obj);
             }
@@ -120,21 +137,20 @@ const fetchTables = (req, res, next) => {
 
     //INSERT URL's AND RETURN THE ITEMS
 
-    let sql = `INSERT INTO tbl_files (url, hits, user_email) VALUES ?`
+    let sql = `INSERT INTO tbl_files (url, hits, user_email, public_id) VALUES ?`
     let values = [];
 
     req.CLOUD_URL.forEach((key) => {
-        let arr = [key.url, key.hits, req.USER_EMAIL];
+        let arr = [key.url, key.hits, req.USER_EMAIL, key.public_id];
         values.push(arr);
     });
     connect.query(sql, [values], (err, result, fields) => {
         if (err) throw err;
-        let sql = `SELECT * FROM tbl_files WHERE user_email = '${req.USER_EMAIL}'`
+        let sql = `SELECT id, url, hits FROM tbl_files WHERE user_email = '${req.USER_EMAIL}'`
         connect.query(sql, (err, results, fields) => {
             if (err) throw err;
             let fileData = [];
             results.forEach((key) => {
-                delete key.user_email
                 fileData.push(key);
             })
             req.FILE_DATA = fileData;
@@ -158,11 +174,130 @@ route.get('/images', jsonParser, verifyUser, getImages, fileTransfer, fetchTable
 
 });
 
+const searchFile = (req, res, next) => {
 
-route.get('/', (req, res) => {
+    //FOR SEARCHING FILES IN THE DATABASE
+
+    let fileId = req.params.id;
+    console.log(fileId);
+    let sql = `SELECT id, url, hits, public_id  FROM tbl_files WHERE id = ${fileId} AND user_email = '${req.USER_EMAIL}' LIMIT 1 `;
+
+    connect.query(sql, (err, result) => {
+
+        if (err) throw err;
 
 
+        if (result.length > 0) {
+
+            let sql = `UPDATE tbl_files SET hits = hits +1 WHERE id = ${fileId}`;
+
+            connect.query(sql, (err, results) => {
+                if (err) throw err;
+
+                if (results.affectedRows > 0) {
+                    req.FULL_FILE_DATA = result[0];
+                    // delete result[0].public_id;
+                    req.FILE_DATA = result[0];
+
+                    next();
+                } else {
+                    res.status(500).end('Fetching Failed.');
+                }
+
+            });
+
+        } else {
+            res.status(401).end('Invalid File ID.')
+        }
+
+    });
+
+
+}
+
+route.get('/images/:id', jsonParser, verifyUser, searchFile, (req, res) => {
+    let fileData = req.FILE_DATA;
+    delete fileData.public_id;
+    res.status(200).json(fileData);
 });
+
+
+
+const updateContents = (req, res, next) => {
+
+    let fileData = req.FULL_FILE_DATA;
+    let fileId = req.params.id;
+    let fields = req.body;
+
+    destroyFile(fileData.public_id);
+    let uploadFile = addSingleFile(fields.url)
+
+    req.UPDATE_CONTENTS = [{
+        url: uploadFile.secure_url,
+        public_id: uploadFile.public_id,
+        hits: fields.hits
+    }];
+
+    next();
+
+};
+
+const updateTables = (req, res, next)=>{
+
+    let fileId = req.FULL_FILE_DATA.id;
+
+    let sql = `UPDATE tbl_files SET ? WHERE id = '${fileId}'`;
+    
+    connect.query(sql, req.UPDATE_CONTENTS[0], (err, result)=>{
+
+        if(err) throw err;
+        
+        if(result.affectedRows > 0){
+            next();
+        }else{
+            res.status(500).end('Update Failed');
+        }
+
+    })
+
+
+
+};
+
+
+
+route.patch('images/:id', jsonParser, verifyUser, searchFile, updateContents, updateTables,(req, res) => {
+    
+    let fileData = req.UPDATE_CONTENTS;
+    delete fileData.public_id;
+    res.status(204).json(fileData);
+    
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+route.get('/sandbox/:id', jsonParser, verifyUser, searchFile, (req, res) => {
+    console.log(req.FULL_FILE_DATA);
+
+    let file = req.FULL_FILE_DATA;
+    let be = destroyFile(file.public_id);
+
+
+    res.end('P');
+
+
+})
 
 
 
