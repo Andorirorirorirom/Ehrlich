@@ -139,7 +139,7 @@ const fetchTables = (req, res, next) => {
     });
     connect.query(sql, [values], (err, result, fields) => {
         if (err) throw err;
-        let sql = `SELECT id, url, hits FROM tbl_files WHERE user_email = '${req.USER_EMAIL}'`
+        let sql = `SELECT id, url, hits FROM tbl_files WHERE user_email = '${req.USER_EMAIL}' AND status <> 'I'`
         connect.query(sql, (err, results, fields) => {
             if (err) throw err;
             let fileData = [];
@@ -173,7 +173,7 @@ const searchFile = (req, res, next) => {
 
     let fileId = req.params.id;
     console.log(fileId);
-    let sql = `SELECT id, url, hits, public_id  FROM tbl_files WHERE id = ${fileId} AND user_email = '${req.USER_EMAIL}' LIMIT 1 `;
+    let sql = `SELECT id, url, hits, public_id  FROM tbl_files WHERE id = ${fileId} AND user_email = '${req.USER_EMAIL}' AND status <> 'I' LIMIT 1 `;
 
     connect.query(sql, (err, result) => {
 
@@ -214,11 +214,9 @@ route.get('/images/:id', jsonParser, verifyUser, searchFile, (req, res) => {
     res.status(200).json(fileData);
 });
 
-const addSingleFile = async (url) => {
-
-}
-
 const updateContents = async (req, res, next) => {
+
+    //1. DELETES THE PREVIOUS FILE 2. ADD THE REPLACEMENT FILE IN CLOUDINARY
 
     let fileData = req.FULL_FILE_DATA;
     let fileId = req.params.id;
@@ -240,15 +238,12 @@ const updateContents = async (req, res, next) => {
         next();
 
 
-    })
-
-
-
-
-
+    });
 };
 
 const updateTables = (req, res, next) => {
+
+    //UPDATES THE ENTRY IN THE DATABASE
 
     let fileId = req.FULL_FILE_DATA.id;
 
@@ -279,6 +274,7 @@ route.patch('/images/:id', jsonParser, verifyUser, searchFile, updateContents, u
 
 const insertContents = async (req, res, next) => {
 
+    //ADD IMAGE URL TO CLOUDINARY
     let url = req.body.url;
 
     await cloudinary.uploader.upload(url, { folder: 'Ehrlich' }, (err, result) => {
@@ -294,14 +290,16 @@ const insertContents = async (req, res, next) => {
         next();
 
 
-    }});
+    });
 
 
 };
 
 const insertTables = (req, res, next) => {
 
-    let sql = `INSERT INTO tbl_users (url, hits, user_email, public_id) VALUES ?`
+
+    //ADD NEWLY CREATED FILE TO THE DATABASE
+    let sql = `INSERT INTO tbl_files (url, hits, user_email, public_id) VALUES ?`
     let values = [];
 
     req.INSERT_CONTENTS.forEach((key) => {
@@ -322,27 +320,28 @@ const insertTables = (req, res, next) => {
 
 
 route.post('/images', jsonParser, verifyUser, insertContents, insertTables, (req, res) => {
-
     res.status(201).end('Image Successfully Created');
-
 });
+route.delete('/images/:id', jsonParser, verifyUser, (req, res) => {
 
 
-route.delete('/images', jsonParser, verifyUser, deleteUser)
+    //UPDATES THE STATUS OF ENTRIES INTO INACTIVE STATUS
+    let fileId = req.params.id;
 
+    let sql = `UPDATE tbl_files SET status = 'I' WHERE id = ${fileId}`;
 
-route.get('/sandbox/:id', jsonParser, verifyUser, searchFile, (req, res) => {
-    console.log(req.FULL_FILE_DATA);
+    connect.query(sql, (err, result) => {
+        if (err) throw err;
 
-    let file = req.FULL_FILE_DATA;
-    let be = destroyFile(file.public_id);
+        if (result.affectedRows > 0) {
+           res.status(202).end('Deletion Success');
+           
+        } else {
+            res.status(500).end('Deletion Failed');
+        }
 
-
-    res.end('P');
-
-
-})
-
+    });
+});
 
 
 module.exports = route;
