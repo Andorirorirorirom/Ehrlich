@@ -266,7 +266,7 @@ const updateTables = (req, res, next) => {
 };
 route.patch('/images/:id', jsonParser, verifyUser, searchFile, updateContents, updateTables, (req, res) => {
 
-    let fileData = req.UPDATE_CONTENTS;
+    let fileData = req.UPDATE_CONTENTS[0];
     delete fileData.public_id;
     res.status(204).json(fileData);
 
@@ -334,8 +334,8 @@ route.delete('/images/:id', jsonParser, verifyUser, (req, res) => {
         if (err) throw err;
 
         if (result.affectedRows > 0) {
-           res.status(202).end('Deletion Success');
-           
+            res.status(202).end('Deletion Success');
+
         } else {
             res.status(500).end('Deletion Failed');
         }
