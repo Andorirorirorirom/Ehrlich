@@ -19,18 +19,11 @@ let pexels = require('pexels');
 const { resolve } = require('promise');
 let getPexels = pexels.createClient(CLOUD_CONFIG.PEXEL_CONFIG.API_KEY);
 cloudinary.config(CLOUD_CONFIG.CLOUDINARY_CONFIG);
-
-const addSingleFile = async (url) => {
-    await cloudinary.uploader.upload(url, { folder: Ehrlich }, (err, result) => {
-        if (err) throw err;
-        return result;
-    })
-}
-
 const destroyFile = async (public_id) => {
 
     await cloudinary.uploader.destroy(public_id, (err, result) => {
         if (err) throw err;
+
         return result;
     })
 }
@@ -114,7 +107,7 @@ const fileTransfer = async (req, res, next) => {
             if (err) {
                 res.status(500).end("Upload Failed")
             } else {
-                console.log(result);
+
                 let obj = {
                     hits: 1,
                     url: result.secure_url,
@@ -221,40 +214,53 @@ route.get('/images/:id', jsonParser, verifyUser, searchFile, (req, res) => {
     res.status(200).json(fileData);
 });
 
+const addSingleFile = async (url) => {
 
+}
 
-const updateContents = (req, res, next) => {
+const updateContents = async (req, res, next) => {
 
     let fileData = req.FULL_FILE_DATA;
     let fileId = req.params.id;
     let fields = req.body;
 
     destroyFile(fileData.public_id);
-    let uploadFile = addSingleFile(fields.url)
 
-    req.UPDATE_CONTENTS = [{
-        url: uploadFile.secure_url,
-        public_id: uploadFile.public_id,
-        hits: fields.hits
-    }];
+    await cloudinary.uploader.upload(fields.url, { folder: 'Ehrlich' }, (err, result) => {
+        if (err) throw err;
 
-    next();
+        // console.log(result);
+
+        req.UPDATE_CONTENTS = [{
+            url: result.secure_url,
+            public_id: result.public_id,
+            hits: fields.hits
+        }];
+
+        next();
+
+
+    })
+
+
+
+
 
 };
 
-const updateTables = (req, res, next)=>{
+const updateTables = (req, res, next) => {
 
     let fileId = req.FULL_FILE_DATA.id;
 
     let sql = `UPDATE tbl_files SET ? WHERE id = '${fileId}'`;
-    
-    connect.query(sql, req.UPDATE_CONTENTS[0], (err, result)=>{
 
-        if(err) throw err;
-        
-        if(result.affectedRows > 0){
+    connect.query(sql, req.UPDATE_CONTENTS[0], (err, result) => {
+
+        if (err) throw err;
+
+        if (result.affectedRows > 0) {
             next();
-        }else{
+        } else {
             res.status(500).end('Update Failed');
         }
 
@@ -263,28 +269,66 @@ const updateTables = (req, res, next)=>{
 
 
 };
+route.patch('/images/:id', jsonParser, verifyUser, searchFile, updateContents, updateTables, (req, res) => {
 
-
-
-route.patch('images/:id', jsonParser, verifyUser, searchFile, updateContents, updateTables,(req, res) => {
-    
     let fileData = req.UPDATE_CONTENTS;
     delete fileData.public_id;
     res.status(204).json(fileData);
-    
+
+});
+
+const insertContents = async (req, res, next) => {
+
+    let url = req.body.url;
+
+    await cloudinary.uploader.upload(url, { folder: 'Ehrlich' }, (err, result) => {
+        if (err) throw err;
+
+        req.INSERT_CONTENTS = [{
+            url: result.secure_url,
+            hits: 1,
+            user_email: req.USER_EMAIL,
+            public_id: result.public_id
+        }];
+
+        next();
+
+
+    }});
+
+
+};
+
+const insertTables = (req, res, next) => {
+
+    let sql = `INSERT INTO tbl_users (url, hits, user_email, public_id) VALUES ?`
+    let values = [];
+
+    req.INSERT_CONTENTS.forEach((key) => {
+        let arr = [key.url, key.hits, key.user_email, key.public_id];
+        values.push(arr);
+    })
+
+    connect.query(sql, [values], (err, result) => {
+        if (err) throw err;
+        if (result.affectedRows > 0) {
+            next();
+        } else {
+            res.status(500).end('Insert Failed');
+        }
+    })
+
+}
+
+
+route.post('/images', jsonParser, verifyUser, insertContents, insertTables, (req, res) => {
+
+    res.status(201).end('Image Successfully Created');
+
 });
 
 
-
-
-
-
-
-
-
-
-
-
+route.delete('/images', jsonParser, verifyUser, deleteUser)
 
 
 route.get('/sandbox/:id', jsonParser, verifyUser, searchFile, (req, res) => {
